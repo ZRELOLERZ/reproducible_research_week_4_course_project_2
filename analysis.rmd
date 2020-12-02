@@ -1,0 +1,189 @@
+---
+title: "An Analysis of The U.S. National Oceanic and Atmospheric Administration's(NOAA) storm database from April 1950 to November 2011, specifically an identification of the types of events that are the most harmful with respect to population health and of greatest economic consequences."
+author: "Simeon Chester"
+date: "12/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synposis
+
+This analysis is a part of the Coursera Reproducible Research week 4 course project (course project 2). It is an analysis if The U.S. National Oceanic and Atmospheric Administration's(NOAA) storm database from April 1950 to November 2011. It aims to answer the following questions:
+
+1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to the population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+## Data Processing
+
+```{r echo = TRUE, cache = TRUE}
+    library(dplyr)
+    library(ggplot2)
+    library(plyr)
+    library(gridExtra)
+
+    fileURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+    fileName <- "repdata_data_StormData.csv.bz2"
+    if (!file.exists(fileName)) {
+        download.file(fileURL, destfile = fileName, method = "curl")
+    }
+    rawData <- read.table(fileName, header = TRUE, sep = ",")
+```
+
+## Results
+
+### The Most type of harmful event with respect to population health
+
+From the data, the population health can be determined by the variables:
+
+* FATALITIES
+
+* INJURIES
+
+Therefore, we group each of the above variables by the event type i.e. `EVTYPE` and apply the sum function to each group. The result is then arranged in descending order by the `FATALITIES` column.
+
+```{r echo = TRUE, cache = TRUE}
+    popFatalities <- arrange(aggregate(FATALITIES ~ EVTYPE, data = rawData, sum, na.rm = TRUE), desc(FATALITIES))
+    popInjuries <- arrange(aggregate(INJURIES ~ EVTYPE, data = rawData, sum, na.rm = TRUE), desc(INJURIES))
+    
+    # create total Health impact which is a sum of fatalities and injuries for each row
+    rawData$HEALTH_IMPACT <- with(rawData, FATALITIES + INJURIES)
+    popHealthImpact <- arrange(aggregate(HEALTH_IMPACT ~ EVTYPE, data = rawData, sum, na.rm = TRUE), desc(HEALTH_IMPACT))
+```
+
+We'll use the first 10 events for analysis
+```{r echo = TRUE, cache = TRUE}
+    popFatalities <- popFatalities[1:10,]
+    popInjuries <- popInjuries[1:10,]
+    popHealthImpact <- popHealthImpact[1:10,]
+``` 
+
+Each `EVTYPE` column needs to be converted to a class `factor` so as to show descending arrangement in ggplot.
+```{r echo = TRUE, cache = TRUE}
+    popFatalities$EVTYPE <- factor(popFatalities$EVTYPE, levels = popFatalities$EVTYPE)
+    popInjuries$EVTYPE <- factor(popInjuries$EVTYPE, levels = popInjuries$EVTYPE)
+    popHealthImpact$EVTYPE <- factor(popHealthImpact$EVTYPE, levels = popHealthImpact$EVTYPE)
+```
+    
+```{r echo = TRUE, cache = TRUE}
+    plotPopFatalities <- ggplot(data = popFatalities, aes(x = EVTYPE, y = FATALITIES)) +
+        geom_bar(stat = "identity", fill = "darkorchid") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab("Event Type") +
+        ylab("Number of Fatalities")
+
+    plotPopInjuries <- ggplot(data = popInjuries, aes(x = EVTYPE, y = INJURIES)) +
+        geom_bar(stat = "identity", fill = "darkorchid1") + 
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab("Event Type") +
+        ylab("Number of Injuries")
+    
+    plotPopHealthImpact <- ggplot(data = popHealthImpact, aes(x = EVTYPE, y = HEALTH_IMPACT)) +
+        geom_bar(stat = "identity", fill = "darkorchid4") + 
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab("Event Type") +
+        ylab("Number of Fatalities and Injuries")
+    
+    grid.arrange(plotPopFatalities, plotPopInjuries, plotPopHealthImpact, ncol = 3, nrow = 1, top = "Graphs Showing the Impact of Weather Events to Population Health")
+```
+
+> According to the graphs above it can be seen that *tornadoes* account for most of the fatalities and injuries. In terms of affecting human health, it is followed by *excessive heat*, *TSTM winds (Supercells)* then *floods*.
+
+## Events of the greatest economic consequences
+
+From the data, the economic consequence can be determined by the following variables:
+
+* PROPDMG - base number
+* PROPDMGEXP - character indicating exponent
+* CROPDMG - base number
+* CROPDMGEXP - character indicating exponent
+
+### Normalisation of data
+
+The following needs to be normalized to a numeric base:
+```{r echo = TRUE, cache = TRUE}
+   unique(rawData$PROPDMGEXP) 
+```
+`PROPDMGEXP` normalizing
+```{r echo = TRUE, cache = TRUE}
+    tempPropDmg <- mapvalues(rawData$PROPDMGEXP,
+                             c("K", "M", "", "B", "m", "+", "0", "5", "6", "?", "4", "2", "3", "h", "7", "H", "-", "1", "8"),
+                             c(1e3, 1e6, 1, 1e9, 1e6,   1,   1,  1e5, 1e6, 1,   1e4, 1e2, 1e3, 1e2, 1e7, 1e2, 1, 1e1, 1e8),
+                             )
+    # Property damage normalized to billions
+    rawData$PROPDMGVAL <- as.numeric(tempPropDmg) * rawData$PROPDMG / (10^9)
+```
+The following needs to be normalized to a numeric base:
+
+```{r echo = TRUE, cache = TRUE}
+   unique(rawData$CROPDMGEXP) 
+```
+`CROPDMGEXP` normalizing
+```{r echo = TRUE, cache = TRUE}
+    tempCropDmg <- mapvalues(rawData$CROPDMGEXP,
+                            c("", "M", "K", "m", "B", "?", "0", "k", "2"),
+                            c(1, 1e6,   1e3, 1e6, 1e9, 1,    1,  1e3, 1e2)
+                             )
+    #Crop damage normalized to billions
+    rawData$CROPDMGVAL <- as.numeric(tempCropDmg) * rawData$CROPDMG / (10^9)
+```
+
+#### Creation of Total Damage
+```{r echo = TRUE, cache = TRUE}
+    rawData$TOTAL_DAMAGE <- rawData$PROPDMGVAL + rawData$CROPDMGVAL
+```
+#### Grouping of damage by Event type and summing group then arranging by descending order
+
+##### Total Crop Damage by Event Type
+```{r echo = TRUE, cache = TRUE}
+    cropDamage <- aggregate(CROPDMGVAL ~ EVTYPE, data = rawData, sum, na.rm = TRUE)
+    cropDamage <- arrange(cropDamage, desc(CROPDMGVAL))[1:10, ]
+    cropDamage$EVTYPE <- factor(cropDamage$EVTYPE, levels = cropDamage$EVTYPE)
+    cropDamage
+```
+
+##### Total Property Damage by Event Type
+```{r echo = TRUE, cache = TRUE}
+    propDamage <- aggregate(PROPDMGVAL ~ EVTYPE, data = rawData, sum, na.rm = TRUE)
+    propDamage <- arrange(propDamage, desc(PROPDMGVAL))[1:10, ]
+    propDamage$EVTYPE <- factor(propDamage$EVTYPE, levels = propDamage$EVTYPE)
+    propDamage
+```
+
+##### Total Damage by Event Type
+```{r echo = TRUE, cache = TRUE}
+    totDamage <- aggregate(TOTAL_DAMAGE ~ EVTYPE, data = rawData, sum, na.rm = TRUE)
+    totDamage <- arrange(totDamage, desc(TOTAL_DAMAGE))[1:10, ]
+    totDamage$EVTYPE <- factor(totDamage$EVTYPE, levels = totDamage$EVTYPE)
+    totDamage
+```
+
+### Plotting Data from `cropDamage`, `propDamage` and `totDamage`
+
+```{r echo = TRUE, cache = TRUE}
+    plotCropDamage <- ggplot(cropDamage, aes(x = EVTYPE, y = CROPDMGVAL)) +
+        geom_bar(stat = "identity", fill = "turquoise1") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab("Event Type") +
+        ylab("Crop Damage ($ billion)")
+    
+    plotPropDamage <- ggplot(propDamage, aes(x = EVTYPE, y = PROPDMGVAL)) +
+        geom_bar(stat = "identity", fill = "turquoise3") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab("Event Type") +
+        ylab("Prop Damage ($ billion)")
+   
+    plotTotDamage <- ggplot(totDamage, aes(x = EVTYPE, y = TOTAL_DAMAGE)) +
+        geom_bar(stat = "identity", fill = "turquoise4") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        xlab("Event Type") +
+        ylab("Total Damages ($ billion)")
+    
+    grid.arrange(plotCropDamage, plotPropDamage, plotTotDamage, ncol = 3, nrow = 1, top = "Graphs Showing The Damage in Billons ($) \n From Weather Events Done to Crops, Property and Both")
+    
+```
+
+> *Floods* account for the highest economic impact with damages amounting to approximately $150, 000, 000, 000 followed by *Hurricanes/ Typhoons*, *Tornadoes* then *Storm Surges* respectively.
